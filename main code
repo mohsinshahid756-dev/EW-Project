@@ -1,0 +1,95 @@
+/*
+ * ULTIMATE SECURITY SYSTEM v4.0
+ * Real-Time Clock (Manual Sync) + Warning Tone Logic
+ */
+
+const int irPin = 2;
+const int yellowLed = 7;
+const int redLed = 5;
+const int buzzer = 6;
+
+int intruderCount = 0;
+bool isTriggered = false; 
+unsigned long detectionStartTime = 0; // Tracks how long someone is standing there
+
+// Time variables
+long startTimeInSeconds = 0; 
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(irPin, INPUT);
+  pinMode(yellowLed, OUTPUT);
+  pinMode(redLed, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  Serial.println("--- SYSTEM INITIALIZING ---");
+  Serial.println("Please set the time in the Serial Monitor (Format: HHMM)");
+  Serial.println("Example: For 2:01 PM, type 1401 and press Enter.");
+  
+  // Wait for user to input time
+  while (Serial.available() == 0) {
+    // Blink yellow while waiting for time sync
+    digitalWrite(yellowLed, HIGH); delay(100); digitalWrite(yellowLed, LOW); delay(100);
+  }
+  
+  int inputTime = Serial.parseInt();
+  int hours = inputTime / 100;
+  int mins = inputTime % 100;
+  startTimeInSeconds = (hours * 3600L) + (mins * 60L);
+  
+  Serial.println("TIME SYNCED. MONITORING ARMED.");
+}
+
+void loop() {
+  int sensorState = digitalRead(irPin);
+  
+  // Calculate current "Real" time
+  long currentTotalSeconds = startTimeInSeconds + (millis() / 1000);
+  int h = (currentTotalSeconds / 3600) % 24;
+  int m = (currentTotalSeconds / 60) % 60;
+  int s = currentTotalSeconds % 60;
+
+  if (sensorState == LOW) {
+    if (!isTriggered) {
+      intruderCount++;
+      isTriggered = true; 
+      detectionStartTime = millis(); // Start the "Warning" timer
+      
+      // Print Actual Time to Serial Monitor
+      Serial.print("[");
+      if(h<10) Serial.print("0"); Serial.print(h); Serial.print(":");
+      if(m<10) Serial.print("0"); Serial.print(m); Serial.print(":");
+      if(s<10) Serial.print("0"); Serial.print(s);
+      Serial.print("] ALERT #"); Serial.println(intruderCount);
+    }
+
+    digitalWrite(yellowLed, LOW); 
+
+    // --- WARNING TONE LOGIC ---
+    unsigned long duration = millis() - detectionStartTime;
+    
+    if (duration > 5000) { 
+      // If blocked for > 5 seconds, switch to SOLID WARNING TONE
+      digitalWrite(redLed, HIGH);
+      digitalWrite(buzzer, HIGH);
+      Serial.println("WARNING: OBSTACLE DETECTED TOO LONG!");
+      delay(100); // Fast strobe for urgency
+      digitalWrite(redLed, LOW);
+      digitalWrite(buzzer, LOW);
+      delay(100);
+    } else {
+      // Normal Heartbeat Siren
+      digitalWrite(redLed, HIGH); digitalWrite(buzzer, HIGH); delay(70);
+      digitalWrite(redLed, LOW); digitalWrite(buzzer, LOW); delay(70);
+      digitalWrite(redLed, HIGH); digitalWrite(buzzer, HIGH); delay(70);
+      digitalWrite(redLed, LOW); digitalWrite(buzzer, LOW);
+      delay(500); 
+    }
+    
+  } else {
+    digitalWrite(yellowLed, HIGH);
+    digitalWrite(redLed, LOW);
+    digitalWrite(buzzer, LOW);
+    isTriggered = false; 
+  }
+}
